@@ -8,7 +8,16 @@ class WPSDB_CLI extends WPSDB_Addon {
 		$this->plugin_version = $GLOBALS['wpsdb_meta']['wp-sync-db-cli']['version'];
 
 		if( ! $this->meets_version_requirements( '1.4b1' ) ) return;
-	}
+    }
+  
+    function get_migrate_tables($tables, $profile) {
+        switch( $profile['table_migrate_option'] ) {
+        case 'migrate_select':
+            return array_intersect( $profile['select_tables'], $tables);
+        default:
+            return $tables;
+        }
+    }
 
 	function cli_migration( $profile ) {
 		global $wpsdb;
@@ -73,20 +82,33 @@ class WPSDB_CLI extends WPSDB_Addon {
 		$tables_to_backup = apply_filters( 'wpsdb_cli_tables_to_backup', $tables_to_backup, $profile, $verify_connection_response, $initiate_migration_response );
 
 		// determine which tables to migrate
-		$tables_to_migrate = array();
-		if( 'push' == $profile['action'] ) {
-			if( 'migrate_only_with_prefix' == $profile['table_migrate_option'] ) {
-				$tables_to_migrate = $this->get_tables( 'prefix' );
-			} elseif( 'migrate_select' == $profile['table_migrate_option'] ) {
-				$tables_to_migrate = array_intersect( $profile['select_tables'], $this->get_tables() );
-			}
-		} elseif( 'pull' == $profile['action'] ) {
-			if( 'migrate_only_with_prefix' == $profile['table_migrate_option'] ) {
-				$tables_to_migrate = $verify_connection_response['prefixed_tables'];
-			} elseif( 'migrate_select' == $profile['table_migrate_option'] ) {
-				$tables_to_migrate = array_intersect( $profile['select_tables'], $verify_connection_response['tables'] );
-			}
-		}
+        $tables_to_migrate = array();
+        
+        switch( $profile['action'] ) {
+            case 'push':
+                $tables_to_migrate = $this->get_migrate_tables( $this->get_tables( 'prefix' ), $profile );
+                break;
+            case 'pull':
+                $tables_to_migrate = $this->get_migrate_tables( $verify_connection_response['prefixed_tables'], $profile );
+                break;
+            default:
+                break;
+        }
+
+		// if( 'push' == $profile['action'] ) {
+		// 	if( 'migrate_only_with_prefix' == $profile['table_migrate_option'] ) {
+		// 		$tables_to_migrate = $this->get_tables( 'prefix' );
+		// 	} elseif( 'migrate_select' == $profile['table_migrate_option'] ) {
+		// 		$tables_to_migrate = array_intersect( $profile['select_tables'], $this->get_tables() );
+		// 	}
+		// } elseif( 'pull' == $profile['action'] ) {
+		// 	if( 'migrate_only_with_prefix' == $profile['table_migrate_option'] ) {
+		// 		$tables_to_migrate = $verify_connection_response['prefixed_tables'];
+		// 	} elseif( 'migrate_select' == $profile['table_migrate_option'] ) {
+		// 		$tables_to_migrate = array_intersect( $profile['select_tables'], $verify_connection_response['tables'] );
+		// 	}
+        // }
+
 		$tables_to_migrate = apply_filters( 'wpsdb_cli_tables_to_migrate', $tables_to_migrate, $profile, $verify_connection_response, $initiate_migration_response );
 
 		$_POST['dump_filename'] = $initiate_migration_response['dump_filename'];
@@ -95,7 +117,7 @@ class WPSDB_CLI extends WPSDB_Addon {
 		$_POST['prefix'] = $verify_connection_response['prefix'];
 
 		$tables_to_process = ( 'backup' == $_POST['stage'] ) ? $tables_to_backup : $tables_to_migrate;
-		$stage_interator = ( 'backup' == $_POST['stage'] ) ? 1 : 2;
+        $stage_interator = ( 'backup' == $_POST['stage'] ) ? 1 : 2;
 
 		do_action( 'wpsdb_cli_before_migrate_tables', $profile, $verify_connection_response, $initiate_migration_response );
 
@@ -104,7 +126,7 @@ class WPSDB_CLI extends WPSDB_Addon {
 				$current_row = -1;
 				$primary_keys = '';
 				$_POST['table'] = $table;
-				$_POST['last_table'] = ( $key == count( $tables_to_process ) - 1 ) ? '1' : '0';
+                $_POST['last_table'] = ( $key == count( $tables_to_process ) - 1 ) ? '1' : '0';
 
 				do {
 					// reset the current chunk
@@ -112,8 +134,9 @@ class WPSDB_CLI extends WPSDB_Addon {
 
 					$_POST['current_row'] = $current_row;
 					$_POST['primary_keys'] = $primary_keys;
-					$_POST = apply_filters( 'wpsdb_cli_migrate_table_args', $_POST, $profile, $verify_connection_response, $initiate_migration_response );
-					$response = $wpsdb->ajax_migrate_table();
+                    $_POST = apply_filters( 'wpsdb_cli_migrate_table_args', $_POST, $profile, $verify_connection_response, $initiate_migration_response );
+                    
+                    $response = $wpsdb->ajax_migrate_table();
 					if( is_wp_error( $migrate_table_response = $this->verify_cli_response( $response, 'ajax_migrate_table()' ) ) ) return $migrate_table_response;
 					$migrate_table_response = apply_filters( 'wpsdb_cli_migrate_table_response', $migrate_table_response, $_POST, $profile, $verify_connection_response, $initiate_migration_response );
 
